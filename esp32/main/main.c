@@ -2,10 +2,20 @@
 #include "esp_log.h"
 #include "esp_wifi.h"
 
+#include "mongoose.h"
+
 #define EXAMPLE_ESP_WIFI_MODE_AP   CONFIG_ESP_WIFI_MODE_AP //TRUE:AP FALSE:STA
 #define EXAMPLE_ESP_WIFI_SSID      CONFIG_ESP_WIFI_SSID
 #define EXAMPLE_ESP_WIFI_PASS      CONFIG_ESP_WIFI_PASSWORD
 #define EXAMPLE_MAX_STA_CONN       CONFIG_MAX_STA_CONN
+
+
+
+
+static TaskHandle_t ETH_Task_Handle;
+
+
+
 
 static const char *TAG = "main";
 
@@ -75,19 +85,50 @@ void wifi_init_sta()
              EXAMPLE_ESP_WIFI_SSID, EXAMPLE_ESP_WIFI_PASS);
 }
 
-void ETH_Task(void *pvParameter)
+static void ETH_Task(void *pvParameter)
 {
   ESP_LOGI(TAG,"NetGate\n");
   tcpip_adapter_init();
   eth_install(event_handler, NULL);
   while(1)
   {
-    vTaskDelay(20000 / portTICK_RATE_MS);
+    vTaskDelay(1);
   }
   
 }
 
+static void ev_handler(struct mg_connection *c, int ev, void *p) {
+  if (ev == MG_EV_HTTP_REQUEST) {
+    struct http_message *hm = (struct http_message *) p;
+
+    // We have received an HTTP request. Parsed request is contained in `hm`.
+    // Send HTTP reply to the client which shows full original request.
+    mg_send_head(c, 200, hm->message.len, "Content-Type: text/plain");
+    mg_printf(c, "%.*s", (int)hm->message.len, hm->message.p);
+  }
+}
+
+static void mongoose_task(void *pvParameter)
+{
+  static const char *s_http_port = "8000";
+  struct mg_mgr mgr;
+  struct mg_connection *c;
+  mg_mgr_init(&mgr, NULL);
+  c = mg_bind(&mgr, s_http_port, ev_handler);
+  mg_set_protocol_http_websocket(c);
+
+  while(1)
+  {
+    mg_mgr_poll(&mgr, 1000);
+    vTaskDelay(1);
+  }
+  
+  
+}
+
+
 void app_main() 
 {
- xTaskCreate(&ETH_Task, "ETH_Task", 2048, NULL, 5, NULL);
+ xTaskCreatePinnedToCore(ETH_Task, "ETH_Task", 2048, NULL, 2, NULL,0);
+ xTaskCreatePinnedToCore(mongoose_task, "mongoose_task", 4096, NULL, 2, NULL,1);
 }
