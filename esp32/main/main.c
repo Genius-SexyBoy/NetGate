@@ -1,7 +1,14 @@
-#include "eth.h"
-#include "UART.h"
+
+
+
+#include <stdio.h>
+#include <string.h>
+
 #include "esp_log.h"
 #include "esp_wifi.h"
+
+#include "eth.h"
+#include "board_uart.h"
 
 #include "mongoose.h"
 
@@ -49,11 +56,11 @@ static esp_err_t event_handler(void *ctx, system_event_t *event)
         break;
       case SYSTEM_EVENT_ETH_GOT_IP:
         ESP_LOGI(TAG,"ETH_GOT_IP");
-        xTaskCreatePinnedToCore(mongoose_task, "mongoose_task", 4096, NULL, 2, &th[0], 1);  //creat tcp task
+        //xTaskCreatePinnedToCore(mongoose_task, "mongoose_task", 4096, NULL, 2, &th[0], 1);  //creat tcp task
         break;
       case SYSTEM_EVENT_ETH_DISCONNECTED:
         ESP_LOGI(TAG,"ETH Disconnected");
-        vTaskDelete(th[0]);               //delete the task
+        //vTaskDelete(th[0]);               //delete the task
         break;
       case SYSTEM_EVENT_ETH_STOP:
         ESP_LOGI(TAG,"ETH Stopped");
@@ -85,17 +92,6 @@ void wifi_init_sta()
              EXAMPLE_ESP_WIFI_SSID, EXAMPLE_ESP_WIFI_PASS);
 }
 
-static void ETH_Task(void *pvParameter)
-{
-  ESP_LOGI(TAG,"NetGate\n");
-  tcpip_adapter_init();
-  eth_install(event_handler, NULL);
-  while(1)
-  {
-    vTaskDelay(1);
-  }
-}
-
 static void ev_handler(struct mg_connection *nc, int ev, void *ev_data) {
   struct mbuf *io = &nc->recv_mbuf;
 
@@ -123,100 +119,33 @@ static void mongoose_task(void *pvParameter)
   }  
 }
 
-static void uart_event_task(void *pvParameters)
+void uart_ondata(uint8_t *data, uint16_t len)
 {
-    uart_event_t event;
-    size_t buffered_size;
-    uint8_t* dtmp = (uint8_t*) malloc(RD_BUF_SIZE);
-    for(;;) {UART_NUM_1
-        //Waiting for UART event.
-        if(xQueueReceive(uart0_queue, (void * )&event, (portTickType)portMAX_DELAY)) {
-            bzero(dtmp, RD_BUF_SIZE);
-            ESP_LOGI(TAG, "uart[%d] event:", EX_UART_NUM);
-            switch(event.type) {
-                //Event of UART receving data
-                /*We'd better handler data event fast, there would be much more data events than
-                other types of events. If we take too much time on data event, the queue might
-                be full.*/
-                case UART_DATA:
-                    ESP_LOGI(TAG, "[UART DATA]: %d", event.size);
-                    uart_read_bytes(EX_UART_NUM, dtmp, event.size, portMAX_DELAY);
-                    ESP_LOGI(TAG, "[DATA EVT]:");
-                    uart_write_bytes(EX_UART_NUM, (const char*) dtmp, event.size);
-                    break;
-                //Event of HW FIFO overflow detected
-                case UART_FIFO_OVF:
-                    ESP_LOGI(TAG, "hw fifo overflow");
-                    // If fifo overflow happened, you should consider adding flow control for your application.
-                    // The ISR has already reset the rx FIFO,
-                    // As an example, we directly flush the rx buffer here in order to read more data.
-                    uart_flush_input(EX_UART_NUM);
-                    xQueueReset(uart0_queue);
-                    break;
-                //Event of UART ring buffer full
-                case UART_BUFFER_FULL:
-                    ESP_LOGI(TAG, "ring buffer full");
-                    // If buffer full happened, you should consider encreasing your buffer size
-                    // As an example, we directly flush the rx buffer here in order to read more data.
-                    uart_flush_input(EX_UART_NUM);
-                    xQueueReset(uart0_queue);
-                    break;
-                //Event of UART RX break detected
-                case UART_BREAK:
-                    ESP_LOGI(TAG, "uart rx break");
-                    break;
-                //Event of UART parity check error
-                case UART_PARITY_ERR:
-                    ESP_LOGI(TAG, "uart parity error");
-                    break;
-                //Event of UART frame error
-                case UART_FRAME_ERR:
-                    ESP_LOGI(TAG, "uart frame error");
-                    break;
-                //UART_PATTERN_DET
-                case UART_PATTERN_DET:
-                    uart_get_buffered_data_len(EX_UART_NUM, &buffered_size);
-                    int pos = uart_pattern_pop_pos(EX_UART_NUM);
-                    ESP_LOGI(TAG, "[UART PATTERN DETECTED] pos: %d, buffered size: %d", pos, buffered_size);
-                    if (pos == -1) {
-                        // There used to be a UART_PATTERN_DET event, but the pattern position queue is full so that it can not
-                        // record the position. We should set a larger queue size.
-                        // As an example, we directly flush the rx buffer here.
-                        uart_flush_input(EX_UART_NUM);
-                    } else {
-                        uart_read_bytes(EX_UART_NUM, dtmp, pos, 100 / portTICK_PERIOD_MS);
-                        uint8_t pat[PATTERN_CHR_NUM + 1];
-                        memset(pat, 0, sizeof(pat));
-                        uart_read_bytes(EX_UART_NUM, pat, PATTERN_CHR_NUM, 100 / portTICK_PERIOD_MS);
-                        ESP_LOGI(TAG, "read data: %s", dtmp);
-                        ESP_LOGI(TAG, "read pat : %s", pat);
-                    }
-                   mongoose break;
-                //Others
-                default:
-                    ESP_LOGI(TAG, "uart event type: %d", event.type);
-                    break;
-            }
-        }
-    }
-    free(dtmp);
-    dtmp = NULL;
-    vTaskDelete(NULL);
-}
+  uint8_t *pa = NULL;
+  uint8_t *pb = NULL;
+  uint8_t patter[20] = {0x0A, 0x0B, 0x0C, 0};
 
-static void UART_task(void *pvParameter)
-{
-  UART_Init();
-  xTaskCreatePinnedToCore(uart_event_task, "uart_event_task", 2048, NULL, 2, NULL,1);
-  while(1)
+  pa = (uint8_t *)strstr((const char *)data,(const char *)patter);
+
+  if(pa) 
   {
-    vTaskDelay(1);
+    vTaskDelay(500 / portTICK_RATE_MS);
+    printf("---------------------test-----------------\n");
+  } 
+  else 
+  {
+    printf("SB\n");
   }
 }
 
 
+
+
 void app_main() 
 {
- xTaskCreatePinnedToCore(ETH_Task, "ETH_Task", 2048, NULL, 2, NULL, 0);
- xTaskCreatePinnedToCore(UART_task, "UART_task", 1024, NULL, 1, NULL, 0);
+  uart_init(uart_ondata);
+  ESP_LOGI(TAG, "NetGate\n");
+  tcpip_adapter_init();
+  eth_install(event_handler, NULL);
+  
 }
