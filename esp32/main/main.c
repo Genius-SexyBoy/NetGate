@@ -16,6 +16,7 @@
 #define BUF_SIZE (1024)
 
 TaskHandle_t Mon_Handle;
+
 struct mg_mgr mgr;
 struct mg_connection *c;
 
@@ -70,23 +71,24 @@ static esp_err_t event_handler(void *ctx, system_event_t *event)
 }
 
 
-static void ev_handler(struct mg_connection *c, int ev, void *ev_data) 
+static void ev_handler(struct mg_connection *nc, int ev, void *ev_data) 
 {
+  struct mbuf *io = &nc->recv_mbuf;
   switch (ev) 
   {
     case MG_EV_CONNECT:
-         ESP_LOGI(TAG,"%s","conntine to");
-         mg_printf(c, "%s", "hi there");
+         ESP_LOGI(TAG,"%s", "connect to server");
+         mg_printf(nc, "%s", "hi there");
          break;
     case MG_EV_RECV:
-         ESP_LOGI(TAG,"%s","hello,kangkang\n");
+         ESP_LOGI(TAG,"%s",io->buf);
+//         mg_send();
     default:break;
   }
 }
 
 static void mongoose_task(void *pvParameter)
 {
-  
   mg_mgr_init(&mgr, NULL);
   c = mg_connect(&mgr, "10.10.14.15:1234", ev_handler);
   while(1) 
