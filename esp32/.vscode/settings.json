@@ -2,7 +2,10 @@
     "files.associations": {
         "uart.h": "c",
         "stdio.h": "c",
-        "board_uart.h": "c"
+        "board_uart.h": "c",
+        "array": "c",
+        "string_view": "c",
+        "system_error": "cpp"
     },
     "C_Cpp.dimInactiveRegions": false
 }

@@ -16,6 +16,8 @@
 #define BUF_SIZE (1024)
 
 TaskHandle_t Mon_Handle;
+struct mg_mgr mgr;
+struct mg_connection *c;
 
 static void mongoose_task(void *pvParameter);
 
@@ -68,26 +70,25 @@ static esp_err_t event_handler(void *ctx, system_event_t *event)
 }
 
 
-static void ev_handler(struct mg_connection *nc, int ev, void *ev_data) 
+static void ev_handler(struct mg_connection *c, int ev, void *ev_data) 
 {
-  struct mbuf *io = &nc->recv_mbuf;
   switch (ev) 
   {
-    case MG_EV_RECV:
-      // This event handler implements simple TCP echo server
-//      mg_send(nc, io->buf, io->len);  // Echo received data back
-         ESP_LOGI(TAG,"%s",io->buf);
-         mbuf_remove(io, io->len);      // Discard data from recv buffer
+    case MG_EV_CONNECT:
+         ESP_LOGI(TAG,"%s","conntine to");
+         mg_printf(c, "%s", "hi there");
          break;
+    case MG_EV_RECV:
+         ESP_LOGI(TAG,"%s","hello,kangkang\n");
     default:break;
   }
 }
 
 static void mongoose_task(void *pvParameter)
 {
-  struct mg_mgr mgr;
+  
   mg_mgr_init(&mgr, NULL);
-  mg_bind(&mgr, "1234", ev_handler);
+  c = mg_connect(&mgr, "10.10.14.15:1234", ev_handler);
   while(1) 
   {  
     mg_mgr_poll(&mgr, 1000);
@@ -97,6 +98,9 @@ static void mongoose_task(void *pvParameter)
 
 void uart_ondata(uint8_t *data, uint16_t len)
 {
+//  char str_buf[20];
+//  sprintf(str_buf, "%x", *data);
+
   if((data[0] == 0xFE) && (data[1] == 0x64) && (data[2] == 0xFF))
   {
     printf("Shakehands completed!\n");
@@ -104,6 +108,7 @@ void uart_ondata(uint8_t *data, uint16_t len)
   }
   else
   {
+    mg_printf(c, "%s", data);                  //Send to server
     printf("Send to Server!\n");
     printf("Receive %d data\n",len);
   }
@@ -114,6 +119,7 @@ void uart_ondata(uint8_t *data, uint16_t len)
 
 void app_main() 
 {
+  ets_delay_us(100000);
   uart_init(uart_ondata);
   ESP_LOGI(TAG, "NetGate\n");
   tcpip_adapter_init();
