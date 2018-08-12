@@ -90,7 +90,7 @@ static void ev_handler(struct mg_connection *nc, int ev, void *ev_data)
 static void mongoose_task(void *pvParameter)
 {
   mg_mgr_init(&mgr, NULL);
-  c = mg_connect(&mgr, "10.10.14.15:1234", ev_handler);
+  c = mg_connect(&mgr, "10.10.15.36:1234", ev_handler);
   while(1) 
   {  
     mg_mgr_poll(&mgr, 1000);
@@ -110,7 +110,9 @@ void uart_ondata(uint8_t *data, uint16_t len)
   }
   else
   {
-    mg_printf(c, "%s", data);                  //Send to server
+    mg_send(c, data, len);
+    mbuf_remove(&c->recv.mbuf, c->recv_mbuf.len);
+    //mg_printf(c, "%s", data);                  //Send to server
     printf("Send to Server!\n");
     printf("Receive %d data\n",len);
   }
