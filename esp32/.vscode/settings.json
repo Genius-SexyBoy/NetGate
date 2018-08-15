@@ -5,7 +5,10 @@
         "board_uart.h": "c",
         "array": "c",
         "string_view": "c",
-        "system_error": "cpp"
+        "system_error": "cpp",
+        "deque": "cpp",
+        "list": "cpp",
+        "vector": "cpp"
     },
     "C_Cpp.dimInactiveRegions": false
 }

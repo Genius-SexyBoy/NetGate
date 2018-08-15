@@ -17,8 +17,9 @@
 
 TaskHandle_t Mon_Handle;
 
-struct mg_mgr mgr;
-struct mg_connection *c;
+static struct mg_mgr mgr;
+static struct mg_connection *c;
+
 
 static void mongoose_task(void *pvParameter);
 
@@ -90,7 +91,7 @@ static void ev_handler(struct mg_connection *nc, int ev, void *ev_data)
 static void mongoose_task(void *pvParameter)
 {
   mg_mgr_init(&mgr, NULL);
-  c = mg_connect(&mgr, "10.10.15.36:1234", ev_handler);
+  c = mg_connect(&mgr, "10.10.14.106:1234", ev_handler);
   while(1) 
   {  
     mg_mgr_poll(&mgr, 1000);
@@ -100,9 +101,10 @@ static void mongoose_task(void *pvParameter)
 
 void uart_ondata(uint8_t *data, uint16_t len)
 {
+  struct mbuf *uo = &c->send_mbuf;
+//  struct mbuf *io = &c->recv_mbuf;
 //  char str_buf[20];
 //  sprintf(str_buf, "%x", *data);
-
   if((data[0] == 0xFE) && (data[1] == 0x64) && (data[2] == 0xFF))
   {
     printf("Shakehands completed!\n");
@@ -111,7 +113,8 @@ void uart_ondata(uint8_t *data, uint16_t len)
   else
   {
     mg_send(c, data, len);
-    mbuf_remove(&c->recv.mbuf, c->recv_mbuf.len);
+   // mbuf_remove(uo, uo->len);
+    //mbuf_remove(io, io->len);
     //mg_printf(c, "%s", data);                  //Send to server
     printf("Send to Server!\n");
     printf("Receive %d data\n",len);
@@ -128,4 +131,5 @@ void app_main()
   ESP_LOGI(TAG, "NetGate\n");
   tcpip_adapter_init();
   eth_install(event_handler, NULL);
+//  vTaskStartScheduler();
 }
