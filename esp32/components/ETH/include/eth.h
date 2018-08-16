@@ -14,7 +14,6 @@ extern "C" {
 
 esp_err_t eth_install(system_event_cb_t cb, void *ctx);
 
-esp_err_t eth_free(void);
 
 #ifdef __cplusplus
 }

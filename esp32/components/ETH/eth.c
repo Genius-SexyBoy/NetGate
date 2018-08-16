@@ -3,6 +3,7 @@
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/event_groups.h"
 
 #include "esp_system.h"
 #include "esp_err.h"
@@ -34,6 +35,7 @@
 
 #define DEFAULT_ETHERNET_PHY_CONFIG phy_lan8720_default_ethernet_config
 
+EventGroupHandle_t eth_event_group;
 
 static const char *TAG = "eth";
 
@@ -93,8 +95,10 @@ static void eth_gpio_config_rmii(void)
 
 esp_err_t eth_install(system_event_cb_t cb, void *ctx)
 {
-    vTaskDelay(100 / portTICK_RATE_MS);
-    esp_event_loop_init(cb, ctx);
+    tcpip_adapter_init();
+    eth_event_group = xEventGroupCreate();
+ //   vTaskDelay(100 / portTICK_RATE_MS);
+    ESP_ERROR_CHECK(esp_event_loop_init(cb, ctx));
 
     eth_config_t config = DEFAULT_ETHERNET_PHY_CONFIG;
     /* Set the PHY address in the example configuration */
@@ -109,14 +113,12 @@ esp_err_t eth_install(system_event_cb_t cb, void *ctx)
     config.phy_power_enable = phy_device_power_enable_via_gpio;
 #endif
 
-    if (esp_eth_init(&config) == ESP_OK) {
+    if (esp_eth_init(&config) == ESP_OK) 
+    {
         esp_eth_enable();
         return ESP_OK;
     }
-    return ESP_FAIL;
+    return ESP_FAIL; 
 }
 
-esp_err_t eth_free(void)
-{
-    return esp_eth_disable();
-}
+
