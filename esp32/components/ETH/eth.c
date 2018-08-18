@@ -97,7 +97,7 @@ esp_err_t eth_install(system_event_cb_t cb, void *ctx)
 {
     tcpip_adapter_init();
     eth_event_group = xEventGroupCreate();
- //   vTaskDelay(100 / portTICK_RATE_MS);
+    vTaskDelay(100 / portTICK_RATE_MS);
     ESP_ERROR_CHECK(esp_event_loop_init(cb, ctx));
 
     eth_config_t config = DEFAULT_ETHERNET_PHY_CONFIG;
