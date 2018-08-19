@@ -8,7 +8,6 @@
 #include "freertos/task.h"
 #include "freertos/event_groups.h"
 #include "esp_log.h"
-//#include "esp_wifi.h"
 #include "nvs.h"
 #include "nvs_flash.h"
 
@@ -25,10 +24,14 @@
 #define BUF_SIZE (1024)
 
 extern EventGroupHandle_t eth_event_group;
+
+SemaphoreHandle_t xSemaphore = NULL;
+
 const int CONNECTED_BIT = BIT0;
 
 TaskHandle_t Mon_Handle;
 
+char middle_buf[128];
 
 static const char *TAG = "main";
 
@@ -57,6 +60,7 @@ static esp_err_t event_handler(void *ctx, system_event_t *event)
 
 void uart_ondata(uint8_t *data, uint16_t len)
 {
+
   if((data[0] == 0xFE) && (data[1] == 0x64) && (data[2] == 0xFF))
   {
     printf("Shakehands completed!\n");
@@ -64,6 +68,7 @@ void uart_ondata(uint8_t *data, uint16_t len)
   }
   else
   {
+    xSemaphoreGive( xSemaphore );
     printf("Receive %d data\n",len);
   }
 }
@@ -189,8 +194,8 @@ static void tcp_client_task(void *pvParameter)
       }
       while  (1)
       {
-        FD_ZERO( &read_set);
-        FD_SET(sockfd,  &read_set);
+        FD_ZERO(&read_set);
+        FD_SET(sockfd, &read_set);
         write_set = read_set;
         error_set = read_set;
         iResult = select(sockfd  + 1, &read_set, &write_set, &error_set, &timeout);
@@ -223,23 +228,25 @@ static void tcp_client_task(void *pvParameter)
             break;
           }
         }
-        // if(FD_ISSET(sockfd, &write_set))      // writable
-        // {
-        //     sprintf(send_buf, "%x%x%x", 0xFE, 0x64, 0xFF);
-        //     // send client data to tcp server
-        //     print_debug(send_buf, strlen(send_buf), "send data");
-        //     int send_ret = send(sockfd, send_buf, strlen(send_buf), 0);
-        //     if (send_ret == -1)
-        //     {
-        //         ESP_LOGE(TAG, "send data to tcp server failed");
-        //         break;
-        //     }
-        //     else
-        //     {
-        //         ESP_LOGI(TAG, "send data to tcp server succeeded");
-        //     }
-        //     vTaskDelay(1000/portTICK_RATE_MS);                       //同步信号时间
-        // }
+        if(FD_ISSET(sockfd, &write_set))      // writable
+        {
+          if( xSemaphoreTake( xSemaphore, ( TickType_t ) 0 ))
+          {
+            sprintf(send_buf, "hello");   
+            // send client data to tcp server
+            print_debug(send_buf, strlen(send_buf), "send data");
+            int send_ret = send(sockfd, send_buf, strlen(send_buf), 0);
+            if (send_ret == -1)
+            {
+                ESP_LOGE(TAG, "send data to tcp server failed");
+                break;
+            }
+            else
+            {
+                ESP_LOGI(TAG, "send data to tcp server succeeded");
+            }
+          }
+        }
         vTaskDelay(100/portTICK_RATE_MS);
       }
       if(sockfd > 0)
@@ -267,6 +274,7 @@ void app_main()
     ESP_ERROR_CHECK(nvs_flash_erase());
     err = nvs_flash_init();
   }
+   xSemaphore = xSemaphoreCreateBinary();
 
   ESP_ERROR_CHECK( err );
   ets_delay_us(100000);

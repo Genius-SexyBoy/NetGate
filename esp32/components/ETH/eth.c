@@ -13,8 +13,8 @@
 #include "esp_log.h"
 #include "esp_eth.h"
 
-#include "rom/ets_sys.h"
-#include "rom/gpio.h"
+// #include "rom/ets_sys.h"
+// #include "rom/gpio.h"
 
 #include "soc/dport_reg.h"
 #include "soc/io_mux_reg.h"
