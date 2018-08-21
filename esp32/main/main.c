@@ -68,8 +68,18 @@ void uart_ondata(uint8_t *data, uint16_t len)
   }
   else
   {
-    xSemaphoreGive( xSemaphore );
-    printf("Receive %d data\n",len);
+    if(xSemaphore != NULL)
+    {
+      if(xSemaphoreGive(xSemaphore ) != pdTRUE)
+      {
+        xSemaphoreGive( xSemaphore );
+        printf("Receive %d data\n",len);
+      }
+      else
+      {
+        printf("Semaphore error!\n");
+      }
+    }    
   }
 }
 
@@ -230,20 +240,28 @@ static void tcp_client_task(void *pvParameter)
         }
         if(FD_ISSET(sockfd, &write_set))      // writable
         {
-          if( xSemaphoreTake( xSemaphore, ( TickType_t ) 0 ))
+          if(xSemaphore != NULL)
           {
-            sprintf(send_buf, "hello");   
-            // send client data to tcp server
-            print_debug(send_buf, strlen(send_buf), "send data");
-            int send_ret = send(sockfd, send_buf, strlen(send_buf), 0);
-            if (send_ret == -1)
+            if(xSemaphoreTake(xSemaphore, ( TickType_t )10) == pdTRUE)
             {
-                ESP_LOGE(TAG, "send data to tcp server failed");
-                break;
+              sprintf(send_buf, "hello");   
+              // send client data to tcp server
+              print_debug(send_buf, strlen(send_buf), "send data");
+              int send_ret = send(sockfd, send_buf, strlen(send_buf), 0);
+              if (send_ret == -1)
+              {
+                  ESP_LOGE(TAG, "send data to tcp server failed");
+                  break;
+              }
+              else
+              {
+                  ESP_LOGI(TAG, "send data to tcp server succeeded");
+              }
+              xSemaphoreGive(xSemaphore);
             }
             else
             {
-                ESP_LOGI(TAG, "send data to tcp server succeeded");
+              ESP_LOGI(TAG, "Could not obtain the semaphore\n");
             }
           }
         }
