@@ -10,6 +10,7 @@
 #include "esp_log.h"
 #include "nvs.h"
 #include "nvs_flash.h"
+#include "driver/uart.h"
 
 #include "eth.h"
 #include "board_uart.h"
@@ -21,17 +22,22 @@
 #include "lwip/dns.h"
 
 
+#define SERVER_IP "10.10.14.55"
+#define SERVER_PORT 1234
+#define RECV_BUF_SIZE 1024
+#define SEND_BUF_SIZE 1024
+
 #define BUF_SIZE (1024)
 
 extern EventGroupHandle_t eth_event_group;
-
-SemaphoreHandle_t xSemaphore = NULL;
 
 const int CONNECTED_BIT = BIT0;
 
 TaskHandle_t Mon_Handle;
 
-char middle_buf[128];
+uint8_t send_flag = 0;
+
+char middle_buf[128] = {0};
 
 static const char *TAG = "main";
 
@@ -60,27 +66,19 @@ static esp_err_t event_handler(void *ctx, system_event_t *event)
 
 void uart_ondata(uint8_t *data, uint16_t len)
 {
-
+  memset(middle_buf, 0, strlen(middle_buf));
   if((data[0] == 0xFE) && (data[1] == 0x64) && (data[2] == 0xFF))
   {
+    uart_write_bytes(UART_NUM_1, "Shakehands completed!\n", strlen("Shakehands completed!\n"));
     printf("Shakehands completed!\n");
     printf("Receive %d data\n",len);
   }
-  else
+  else        
   {
-    if(xSemaphore != NULL)
-    {
-      if(xSemaphoreGive(xSemaphore ) != pdTRUE)
-      {
-        xSemaphoreGive( xSemaphore );
-        printf("Receive %d data\n",len);
-      }
-      else
-      {
-        printf("Semaphore error!\n");
-      }
-    }    
-  }
+    uart_write_bytes(UART_NUM_1, (const char*)"hello", strlen("hello"));
+    memcpy(middle_buf, data, len);
+    send_flag = 1;
+  }      
 }
 
 
@@ -134,7 +132,7 @@ static void tcp_client_task(void *pvParameter)
                         false, true, portMAX_DELAY);
     ESP_LOGI(TAG, "ESP32 Connected to WiFi ! Start TCP Server....");
 
-#define SERVER_IP "10.10.15.36"
+#define SERVER_IP "10.10.14.55"
 #define SERVER_PORT 1234
 #define RECV_BUF_SIZE 1024
 #define SEND_BUF_SIZE 1024
@@ -230,6 +228,7 @@ static void tcp_client_task(void *pvParameter)
           if(recv_ret > 0)
           {
             //do more chores
+            uart_write_bytes(UART_NUM_1, recv_buf, recv_ret);
             print_debug(recv_buf, recv_ret, "receive data");
           }
           else
@@ -238,34 +237,29 @@ static void tcp_client_task(void *pvParameter)
             break;
           }
         }
+      if(send_flag)
+      {
+        send_flag = 0;
         if(FD_ISSET(sockfd, &write_set))      // writable
-        {
-          if(xSemaphore != NULL)
-          {
-            if(xSemaphoreTake(xSemaphore, ( TickType_t )10) == pdTRUE)
-            {
-              sprintf(send_buf, "hello");   
+        {                  
               // send client data to tcp server
-              print_debug(send_buf, strlen(send_buf), "send data");
-              int send_ret = send(sockfd, send_buf, strlen(send_buf), 0);
-              if (send_ret == -1)
-              {
-                  ESP_LOGE(TAG, "send data to tcp server failed");
-                  break;
-              }
-              else
-              {
-                  ESP_LOGI(TAG, "send data to tcp server succeeded");
-              }
-              xSemaphoreGive(xSemaphore);
+            memcpy(send_buf, middle_buf, strlen(middle_buf));
+            print_debug(send_buf, strlen(send_buf), "send data");
+            int send_ret = send(sockfd, send_buf, strlen(send_buf), 0);
+            if (send_ret == -1)
+            {
+              ESP_LOGE(TAG, "send data to tcp server failed");
+              break;
             }
             else
             {
-              ESP_LOGI(TAG, "Could not obtain the semaphore\n");
+              ESP_LOGI(TAG, "send data to tcp server succeeded");
             }
-          }
+            memset(middle_buf, 0, strlen(middle_buf));                 
         }
-        vTaskDelay(100/portTICK_RATE_MS);
+      }
+        
+      vTaskDelay(100/portTICK_RATE_MS);
       }
       if(sockfd > 0)
       {
@@ -280,8 +274,8 @@ static void tcp_client_task(void *pvParameter)
     } // end
     printf( "A stop nonblock...\n");
     vTaskDelete(NULL);
-    return;
 }
+
 
 
 void app_main() 
@@ -292,11 +286,12 @@ void app_main()
     ESP_ERROR_CHECK(nvs_flash_erase());
     err = nvs_flash_init();
   }
-   xSemaphore = xSemaphoreCreateBinary();
+  ESP_ERROR_CHECK(err);
 
-  ESP_ERROR_CHECK( err );
   ets_delay_us(100000);
+ // xTaskCreatePinnedToCore(&vATask, "vATask", 1024, NULL, 4, NULL, 0);
   eth_install(event_handler, NULL);
   uart_init(uart_ondata);
-  xTaskCreatePinnedToCore(&tcp_client_task, "tcp_client_task", 4096, NULL, 5, NULL,1);
+  xTaskCreatePinnedToCore(&tcp_client_task, "tcp_client_task", 4096, NULL, 5, NULL, 1);
+  
 }
