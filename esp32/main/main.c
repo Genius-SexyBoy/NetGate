@@ -66,16 +66,17 @@ static esp_err_t event_handler(void *ctx, system_event_t *event)
 
 void uart_ondata(uint8_t *data, uint16_t len)
 {
+  uint8_t res_uart[] = {0xFE, 0x64, 0xFF};
   memset(middle_buf, 0, strlen(middle_buf));
   if((data[0] == 0xFE) && (data[1] == 0x64) && (data[2] == 0xFF))
   {
-    uart_write_bytes(UART_NUM_1, "Shakehands completed!\n", strlen("Shakehands completed!\n"));
+    vTaskDelay(1000/portTICK_RATE_MS);
+    uart_write_bytes(UART_NUM_1, (const char*)res_uart, 3);
     printf("Shakehands completed!\n");
     printf("Receive %d data\n",len);
   }
   else        
   {
-    uart_write_bytes(UART_NUM_1, (const char*)"hello", strlen("hello"));
     memcpy(middle_buf, data, len);
     send_flag = 1;
   }      
@@ -132,10 +133,6 @@ static void tcp_client_task(void *pvParameter)
                         false, true, portMAX_DELAY);
     ESP_LOGI(TAG, "ESP32 Connected to WiFi ! Start TCP Server....");
 
-#define SERVER_IP "10.10.14.55"
-#define SERVER_PORT 1234
-#define RECV_BUF_SIZE 1024
-#define SEND_BUF_SIZE 1024
 
     while(1)
     {
@@ -259,7 +256,7 @@ static void tcp_client_task(void *pvParameter)
         }
       }
         
-      vTaskDelay(100/portTICK_RATE_MS);
+      vTaskDelay(50/portTICK_RATE_MS);
       }
       if(sockfd > 0)
       {
