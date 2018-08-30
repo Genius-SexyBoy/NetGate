@@ -11,15 +11,10 @@
 
 #define BUF_SIZE (1024)
 
-static void uart_task(void *arg)
-{
-    callback_t callback = (callback_t)arg;
-
-//    uart_event_group = xEventGroupCreate();
-    /* Configure parameters of an UART driver,
-     * communication pins and install the driver */
+void uart_init(void)
+{   
     uart_config_t uart_config = {
-        .baud_rate = 115200,
+        .baud_rate = 9600,
         .data_bits = UART_DATA_8_BITS,
         .parity    = UART_PARITY_DISABLE,
         .stop_bits = UART_STOP_BITS_1,
@@ -29,30 +24,5 @@ static void uart_task(void *arg)
     ESP_ERROR_CHECK(uart_set_pin(UART_NUM_1, GPIO_NUM_16, GPIO_NUM_17,
                                              UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
     ESP_ERROR_CHECK(uart_driver_install(UART_NUM_1, BUF_SIZE * 2, 0, 0, NULL, 0));
-
-    // Configure a temporary buffer for the incoming data
-    uint8_t *data = (uint8_t *) malloc(BUF_SIZE);
-     uart_write_bytes(UART_NUM_1, (const char*)"Shakehands completed!\n", strlen("Shakehands completed!\n") + 1);
-    while (1)
-    {
-        // Read data from the UART
-        int len = uart_read_bytes(UART_NUM_1, data, BUF_SIZE, 20 / portTICK_RATE_MS);
-        // Write data back to the UART
-        if (len)
-        {
-            if (callback)
-            {
-                data[len] = 0;
-                callback(data, len);
-                len = 0;
-            }
-        }
-    }
-    vTaskDelete( NULL);
 }
 
-
-void uart_init(callback_t cb)
-{
-    xTaskCreatePinnedToCore(uart_task, "uart_task", 4096, (void * const)cb, 2, NULL,1);
-}

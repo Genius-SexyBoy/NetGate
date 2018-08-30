@@ -15,9 +15,7 @@ extern "C" {
 // #define EX_UART_NUM UART_NUM_1
 // #define PATTERN_CHR_NUM    (3)  
 
-typedef void (*callback_t)(uint8_t *data, uint16_t len);
-
-void uart_init(callback_t cb);
+void uart_init(void);
 
 #ifdef __cplusplus
 }

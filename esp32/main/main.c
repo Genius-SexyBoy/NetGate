@@ -7,6 +7,8 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/event_groups.h"
+#include "freertos/queue.h"
+
 #include "esp_log.h"
 #include "nvs.h"
 #include "nvs_flash.h"
@@ -22,22 +24,23 @@
 #include "lwip/dns.h"
 
 
-#define SERVER_IP "10.10.14.55"
+#define SERVER_IP "10.10.14.185"
 #define SERVER_PORT 1234
 #define RECV_BUF_SIZE 1024
 #define SEND_BUF_SIZE 1024
 
-#define BUF_SIZE (1024)
 
 extern EventGroupHandle_t eth_event_group;
+QueueHandle_t uart_queue_handle;
+QueueHandle_t  tcp_queue_handle; 
 
 const int CONNECTED_BIT = BIT0;
 
-TaskHandle_t Mon_Handle;
+typedef struct {
+  uint8_t data[512];
+  int32_t len;
+} data_buf_t;
 
-uint8_t send_flag = 0;
-
-char middle_buf[128] = {0};
 
 static const char *TAG = "main";
 
@@ -62,24 +65,6 @@ static esp_err_t event_handler(void *ctx, system_event_t *event)
     return ESP_OK;
 }
 
-
-
-void uart_ondata(uint8_t *data, uint16_t len)
-{
-  memset(middle_buf, 0, strlen(middle_buf));
-  if((data[0] == 0xFE) && (data[1] == 0x64) && (data[2] == 0xFF))
-  {
-    uart_write_bytes(UART_NUM_1, "Shakehands completed!\n", strlen("Shakehands completed!\n"));
-    printf("Shakehands completed!\n");
-    printf("Receive %d data\n",len);
-  }
-  else        
-  {
-    uart_write_bytes(UART_NUM_1, (const char*)"hello", strlen("hello"));
-    memcpy(middle_buf, data, len);
-    send_flag = 1;
-  }      
-}
 
 
 // print pointer data
@@ -130,12 +115,7 @@ static void tcp_client_task(void *pvParameter)
     ESP_LOGI(TAG, "Wait for ESP32 Connect to ETH!");
     xEventGroupWaitBits(eth_event_group, CONNECTED_BIT,
                         false, true, portMAX_DELAY);
-    ESP_LOGI(TAG, "ESP32 Connected to WiFi ! Start TCP Server....");
-
-#define SERVER_IP "10.10.14.55"
-#define SERVER_PORT 1234
-#define RECV_BUF_SIZE 1024
-#define SEND_BUF_SIZE 1024
+    ESP_LOGI(TAG, "ESP32 Connected to ETH! Start TCP Server....");
 
     while(1)
     {
@@ -193,13 +173,13 @@ static void tcp_client_task(void *pvParameter)
       timeout.tv_sec = 3;
       timeout.tv_usec = 0;
 
-      char* send_buf = (char*)calloc(SEND_BUF_SIZE, 1);
-      char* recv_buf = (char*)calloc(SEND_BUF_SIZE, 1);
-      if(send_buf == NULL || recv_buf == NULL )
-      {
-          ESP_LOGE(TAG, "alloc failed, reset chip...");
-          esp_restart();
-      }
+//      char* send_buf = (char*)calloc(SEND_BUF_SIZE, 1);
+//      char* recv_buf = (char*)calloc(SEND_BUF_SIZE, 1);
+//      if(send_buf == NULL || recv_buf == NULL )
+//      {
+//          ESP_LOGE(TAG, "alloc failed, reset chip...");
+//          esp_restart();
+//      }
       while  (1)
       {
         FD_ZERO(&read_set);
@@ -224,74 +204,109 @@ static void tcp_client_task(void *pvParameter)
         }
         if(FD_ISSET(sockfd, &read_set))      // readable
         {
-          int recv_ret  =  recv(sockfd, recv_buf, RECV_BUF_SIZE, 0);
-          if(recv_ret > 0)
+          static data_buf_t tcp_recv_struct;
+          tcp_recv_struct.len = recv(sockfd, (char *)tcp_recv_struct.data, sizeof(tcp_recv_struct.data), 0);
+          if(tcp_recv_struct.len > 0)
           {
             //do more chores
-            uart_write_bytes(UART_NUM_1, recv_buf, recv_ret);
-            print_debug(recv_buf, recv_ret, "receive data");
-          }
-          else
-          {
-            ESP_LOGW(TAG, "close tcp transmit, would close socket...");
-            break;
-          }
+            if(xQueueSend(tcp_queue_handle, &tcp_recv_struct, 10/portTICK_RATE_MS) == pdPASS)
+            {
+               tcp_recv_struct.len = 0;
+               memset(tcp_recv_struct.data, 0, sizeof(tcp_recv_struct.data));
+            }
+          }        
         }
-      if(send_flag)
-      {
-        send_flag = 0;
         if(FD_ISSET(sockfd, &write_set))      // writable
-        {                  
-              // send client data to tcp server
-            memcpy(send_buf, middle_buf, strlen(middle_buf));
-            print_debug(send_buf, strlen(send_buf), "send data");
-            int send_ret = send(sockfd, send_buf, strlen(send_buf), 0);
-            if (send_ret == -1)
+        {
+          static data_buf_t tcp_send_struct;
+          if(xQueueReceive(uart_queue_handle, &tcp_send_struct, 10/portTICK_RATE_MS) == pdTRUE)
+          {
+            if(tcp_send_struct.len)
             {
-              ESP_LOGE(TAG, "send data to tcp server failed");
-              break;
+              int send_ret = send(sockfd, (char *)tcp_send_struct.data, tcp_send_struct.len, 0);
+              if (send_ret == -1)
+              {
+                ESP_LOGE(TAG, "send data to tcp server failed");
+                break;
+              }
+              else
+              {
+                ESP_LOGI(TAG, "send data to tcp server succeeded");
+                tcp_send_struct.len = 0;
+                memset(tcp_send_struct.data, 0, sizeof(tcp_send_struct.data));    
+              }
             }
-            else
-            {
-              ESP_LOGI(TAG, "send data to tcp server succeeded");
-            }
-            memset(middle_buf, 0, strlen(middle_buf));                 
+          }                      
         }
-      }
         
-      vTaskDelay(100/portTICK_RATE_MS);
+        vTaskDelay(30/portTICK_RATE_MS);
       }
       if(sockfd > 0)
       {
         close(sockfd);
         ESP_LOGW(TAG, "close socket , sockfd:%d", sockfd);
       }
-      free(send_buf);
-      send_buf = NULL;
-      free(recv_buf);
-      recv_buf = NULL;
+//      free(send_buf);
+//      send_buf = NULL;
+//      free(recv_buf);
+//      recv_buf = NULL;
       ESP_LOGW(TAG, "reset tcp client and reconnect to tcp server...");
     } // end
     printf( "A stop nonblock...\n");
     vTaskDelete(NULL);
 }
 
+void uart_task(void *pvParameter)
+{
+  static data_buf_t uart_recv_struct;
+  while(1)
+  {
+    //read data from uart
+    uart_recv_struct.len = uart_read_bytes(UART_NUM_1, (uint8_t *)uart_recv_struct.data, 512, 10/portTICK_RATE_MS);
+    if(uart_recv_struct.len)
+    {
+      if(xQueueSend(uart_queue_handle, &uart_recv_struct, 10/portTICK_RATE_MS) == pdPASS)
+      {
+        ESP_LOGI(TAG, "uart send queue error!\n");
+        uart_recv_struct.len = 0;
+        memset(uart_recv_struct.data, 0, sizeof(uart_recv_struct.data));
+      }
+    }
 
+    //write data to uart
+    static data_buf_t uart_send_struct;
+    if(xQueueReceive(tcp_queue_handle, &uart_send_struct, 10/portTICK_RATE_MS) == pdTRUE)
+    {
+      if(uart_send_struct.len)
+      {
+        uart_write_bytes(UART_NUM_1, (const char *)uart_send_struct.data, uart_send_struct.len);
+        uart_send_struct.len = 0;
+        memset(uart_send_struct.data, 0, sizeof(uart_send_struct.data));
+      }
+    }
+
+    vTaskDelay(30/portTICK_RATE_MS);
+  }
+  vTaskDelete(NULL);
+}
 
 void app_main() 
 {
   esp_err_t err = nvs_flash_init();
+  eth_event_group = xEventGroupCreate();
+  uart_queue_handle = xQueueCreate(100, sizeof(data_buf_t));
+   tcp_queue_handle = xQueueCreate(100, sizeof(data_buf_t));
   if (err == ESP_ERR_NVS_NO_FREE_PAGES)
   {
     ESP_ERROR_CHECK(nvs_flash_erase());
     err = nvs_flash_init();
   }
-  ESP_ERROR_CHECK(err);
-
+  ESP_ERROR_CHECK(err); 
   ets_delay_us(100000);
- // xTaskCreatePinnedToCore(&vATask, "vATask", 1024, NULL, 4, NULL, 0);
+  uart_init();
   eth_install(event_handler, NULL);
-  uart_init(uart_ondata);
+  eth_config("ESP32-GateWay", inet_addr("10.10.14.99"),
+                              inet_addr("10.10.12.1"), inet_addr("255.255.255.0"), 0, 0);
+  xTaskCreatePinnedToCore(&uart_task, "uart_task", 4096, NULL, 6, NULL, 1);
   xTaskCreatePinnedToCore(&tcp_client_task, "tcp_client_task", 4096, NULL, 5, NULL, 1);
-  
 }

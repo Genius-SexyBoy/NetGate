@@ -30,6 +30,7 @@
 #include "driver/periph_ctrl.h"
 
 #include "eth_phy/phy_lan8720.h"
+#include "lwip/dns.h"
 
 #include "eth.h"
 
@@ -42,6 +43,8 @@ static const char *TAG = "eth";
 #define PIN_PHY_POWER CONFIG_PHY_POWER_PIN
 #define PIN_SMI_MDC   CONFIG_PHY_SMI_MDC_PIN
 #define PIN_SMI_MDIO  CONFIG_PHY_SMI_MDIO_PIN
+
+bool eth_static_ip;
 
 #ifdef CONFIG_PHY_USE_POWER_PIN
 /* This replaces the default PHY power on/off function with one that
@@ -122,3 +125,67 @@ esp_err_t eth_install(system_event_cb_t cb, void *ctx)
 }
 
 
+esp_err_t eth_config(const char * hostname, uint32_t local_ip, uint32_t gateway, uint32_t subnet, uint32_t dns1, uint32_t dns2)
+{
+    esp_err_t err = ESP_OK;
+    tcpip_adapter_ip_info_t info;
+	
+    if (hostname != NULL) {
+        err = tcpip_adapter_set_hostname(TCPIP_ADAPTER_IF_ETH, hostname);
+    } else {
+        err = tcpip_adapter_set_hostname(TCPIP_ADAPTER_IF_ETH, "NetGate");
+    }
+    
+    if(err != ESP_OK){
+        ESP_LOGE(TAG,"hostname could not be seted! Error: %d", err);
+        return err;
+    }   
+    if(local_ip != (uint32_t)0x00000000){
+        info.ip.addr = local_ip;
+        info.gw.addr = gateway;
+        info.netmask.addr = subnet;
+    } else {
+        info.ip.addr = 0;
+        info.gw.addr = 0;
+        info.netmask.addr = 0;
+	}
+
+    err = tcpip_adapter_dhcpc_stop(TCPIP_ADAPTER_IF_ETH);
+    if(err != ESP_OK && err != ESP_ERR_TCPIP_ADAPTER_DHCP_ALREADY_STOPPED){
+        ESP_LOGE(TAG,"DHCP could not be stopped! Error: %d", err);
+        return err;
+    }
+
+    err = tcpip_adapter_set_ip_info(TCPIP_ADAPTER_IF_ETH, &info);
+    if(err != ESP_OK){
+        ESP_LOGE(TAG,"STA IP could not be configured! Error: %d", err);
+        return err;
+}
+    if(info.ip.addr){
+        eth_static_ip = true;
+    } else {
+        err = tcpip_adapter_dhcpc_start(TCPIP_ADAPTER_IF_ETH);
+        if(err != ESP_OK && err != ESP_ERR_TCPIP_ADAPTER_DHCP_ALREADY_STARTED){
+            ESP_LOGW(TAG,"DHCP could not be started! Error: %d", err);
+            return err;
+        }
+        eth_static_ip = false;
+    }
+
+    ip_addr_t d;
+    d.type = IPADDR_TYPE_V4;
+
+    if(dns1 != (uint32_t)0x00000000) {
+        // Set DNS1-Server
+        d.u_addr.ip4.addr = dns1;
+        dns_setserver(0, &d);
+    }
+
+    if(dns2 != (uint32_t)0x00000000) {
+        // Set DNS2-Server
+        d.u_addr.ip4.addr = dns2;
+        dns_setserver(1, &d);
+    }
+
+    return ESP_OK;
+}
