@@ -12,9 +12,6 @@
 extern "C" {
 #endif
 
-// #define EX_UART_NUM UART_NUM_1
-// #define PATTERN_CHR_NUM    (3)  
-
 void uart_init(void);
 
 #ifdef __cplusplus

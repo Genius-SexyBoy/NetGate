@@ -130,42 +130,55 @@ esp_err_t eth_config(const char * hostname, uint32_t local_ip, uint32_t gateway,
     esp_err_t err = ESP_OK;
     tcpip_adapter_ip_info_t info;
 	
-    if (hostname != NULL) {
+    if (hostname != NULL) 
+    {
         err = tcpip_adapter_set_hostname(TCPIP_ADAPTER_IF_ETH, hostname);
-    } else {
+    } 
+    else 
+    {
         err = tcpip_adapter_set_hostname(TCPIP_ADAPTER_IF_ETH, "NetGate");
     }
     
-    if(err != ESP_OK){
+    if(err != ESP_OK)
+    {
         ESP_LOGE(TAG,"hostname could not be seted! Error: %d", err);
         return err;
     }   
-    if(local_ip != (uint32_t)0x00000000){
+    if(local_ip != (uint32_t)0x00000000)
+    {
         info.ip.addr = local_ip;
-        info.gw.addr = gateway;
+        //info.gw.addr = gateway;
         info.netmask.addr = subnet;
-    } else {
+    } 
+    else 
+    {
         info.ip.addr = 0;
-        info.gw.addr = 0;
+        //info.gw.addr = 0;
         info.netmask.addr = 0;
 	}
 
     err = tcpip_adapter_dhcpc_stop(TCPIP_ADAPTER_IF_ETH);
-    if(err != ESP_OK && err != ESP_ERR_TCPIP_ADAPTER_DHCP_ALREADY_STOPPED){
+    if(err != ESP_OK && err != ESP_ERR_TCPIP_ADAPTER_DHCP_ALREADY_STOPPED)
+    {
         ESP_LOGE(TAG,"DHCP could not be stopped! Error: %d", err);
         return err;
     }
 
     err = tcpip_adapter_set_ip_info(TCPIP_ADAPTER_IF_ETH, &info);
-    if(err != ESP_OK){
+    if(err != ESP_OK)
+    {
         ESP_LOGE(TAG,"STA IP could not be configured! Error: %d", err);
         return err;
-}
-    if(info.ip.addr){
+    }
+    if(info.ip.addr)
+    {
         eth_static_ip = true;
-    } else {
+    } 
+    else 
+    {
         err = tcpip_adapter_dhcpc_start(TCPIP_ADAPTER_IF_ETH);
-        if(err != ESP_OK && err != ESP_ERR_TCPIP_ADAPTER_DHCP_ALREADY_STARTED){
+        if(err != ESP_OK && err != ESP_ERR_TCPIP_ADAPTER_DHCP_ALREADY_STARTED)
+        {
             ESP_LOGW(TAG,"DHCP could not be started! Error: %d", err);
             return err;
         }
@@ -175,13 +188,15 @@ esp_err_t eth_config(const char * hostname, uint32_t local_ip, uint32_t gateway,
     ip_addr_t d;
     d.type = IPADDR_TYPE_V4;
 
-    if(dns1 != (uint32_t)0x00000000) {
+    if(dns1 != (uint32_t)0x00000000) 
+    {
         // Set DNS1-Server
         d.u_addr.ip4.addr = dns1;
         dns_setserver(0, &d);
     }
 
-    if(dns2 != (uint32_t)0x00000000) {
+    if(dns2 != (uint32_t)0x00000000) 
+    {
         // Set DNS2-Server
         d.u_addr.ip4.addr = dns2;
         dns_setserver(1, &d);
