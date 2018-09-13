@@ -102,7 +102,7 @@ static void tcp_client_task(void *pvParameter)
   printf("TCP server %s:%d\n", ip_addr,ip_port);
   while(1)
   {
-    //vTaskDelay(1000 / portTICK_RATE_MS);
+    vTaskDelay(2000 / portTICK_RATE_MS);
     int  sockfd = 0, iResult = 0;
 
     struct  sockaddr_in serv_addr;
@@ -115,8 +115,7 @@ static void tcp_client_task(void *pvParameter)
         continue;
     }
 
-    
-    memset( &serv_addr, 0, sizeof (serv_addr));
+    bzero(&serv_addr, sizeof (serv_addr));
     serv_addr.sin_family = AF_INET;
     serv_addr.sin_port = htons(ip_port);
     serv_addr.sin_addr.s_addr  =  inet_addr(ip_addr);
@@ -186,9 +185,13 @@ static void tcp_client_task(void *pvParameter)
         {
           if(xQueueSend(tcp_queue_handle, &tcp_recv_struct, 10/portTICK_RATE_MS) == pdPASS)
           {
-              tcp_recv_struct.len = 0;
-              memset(tcp_recv_struct.data, 0, sizeof(tcp_recv_struct.data));
+            bzero(&tcp_recv_struct, sizeof(tcp_recv_struct));
           }
+        }
+        else
+        {
+          ESP_LOGW(TAG, "Close tcp socket!\n");
+          break;
         }        
       }
       if(FD_ISSET(sockfd, &write_set))      // writable
@@ -207,8 +210,7 @@ static void tcp_client_task(void *pvParameter)
             else
             {
               ESP_LOGI(TAG, "send data to tcp server succeeded");
-              tcp_send_struct.len = 0;
-              memset(tcp_send_struct.data, 0, sizeof(tcp_send_struct.data));    
+              bzero(&tcp_send_struct, sizeof(tcp_send_struct));    
             }
           }
         }                      
@@ -237,8 +239,7 @@ void uart_task(void *pvParameter)
     {
       if(xQueueSend(uart_queue_handle, &uart_recv_struct, 10/portTICK_RATE_MS) == pdPASS)
       {
-        uart_recv_struct.len = 0;
-        memset(uart_recv_struct.data, 0, sizeof(uart_recv_struct.data));
+        bzero(&uart_recv_struct, sizeof(uart_recv_struct));
       }
     }
 
@@ -249,8 +250,7 @@ void uart_task(void *pvParameter)
       if(uart_send_struct.len)
       {
         uart_write_bytes(UART_NUM_1, (const char *)uart_send_struct.data, uart_send_struct.len);
-        uart_send_struct.len = 0;
-        memset(uart_send_struct.data, 0, sizeof(uart_send_struct.data));
+        bzero(&uart_send_struct, sizeof(uart_send_struct));
       }
     }
     vTaskDelay(30/portTICK_RATE_MS);
@@ -324,35 +324,12 @@ void at_commend_task(void *pvParameter)
           esp_restart();
         }
       }
-      at_commend_struct.len = 0;
-      memset(at_commend_struct.data, 0, sizeof(at_commend_struct.data));
+      bzero(&at_commend_struct, sizeof(at_commend_struct));
     }
     vTaskDelay(30/portTICK_RATE_MS);
   }
   vTaskDelete(NULL);
 }
-
-
-// void flash_read_task(void *pvParameter)
-// {
-//   size_t size;
-// //  my_nvs_write(nvs_remote_handle, MY_NAMESPACE, "key_one", "kangkang");
-//   esp_err_t err = nvs_open(MY_NAMESPACE, NVS_READWRITE, &nvs_remote_handle);
-//   if (err != ESP_OK) 
-//     ESP_LOGW(TAG, "flash open error!\n");
-//   nvs_get_str(nvs_remote_handle, "AT", NULL, &size);
-//   char* ip_addr = malloc(size);
-//   nvs_get_str(nvs_remote_handle, "AT", ip_addr, &size);
-//   nvs_close(nvs_remote_handle);
-//   while(1)
-//   {
-// //    uart_write_bytes(UART_NUM_0, (const char *)ip_addr, size);
-//     ESP_LOGI(TAG, "%d",size);       
-//     ESP_LOG_BUFFER_CHAR(TAG, ip_addr, size);
-//     vTaskDelay(3000/portTICK_RATE_MS);
-//   }
-//   vTaskDelete(NULL);
-// }
 
 
 void app_main() 
@@ -394,8 +371,8 @@ void app_main()
   uart_init();
   eth_install(event_handler, NULL);
   eth_config("ESP32-GateWay", inet_addr("192.168.3.66"),
-                              inet_addr("192.168.3.1"), inet_addr("255.255.255.0"), 0, 0);
-  xTaskCreate(&uart_task, "uart_task", 4 * 1024, NULL, 6, NULL);
-  xTaskCreatePinnedToCore(&at_commend_task, "at_commend_task", 4 * 1024, NULL, 4, NULL, 1);
-  xTaskCreate(&tcp_client_task, "tcp_client_task", 8 * 1024, NULL, 8, NULL);
+                              inet_addr("192.168.3.1"), inet_addr("255.255.255.0"), inet_addr("192.168.3.1"), 0);
+  xTaskCreate(&uart_task, "uart_task", 2 * 1024, NULL, 6, NULL);
+  xTaskCreate(&at_commend_task, "at_commend_task", 1 * 1024, NULL, 4, NULL);
+  xTaskCreate(&tcp_client_task, "tcp_client_task", 2 * 1024, NULL, 5, NULL);
 }
