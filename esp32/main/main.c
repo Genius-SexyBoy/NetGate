@@ -42,7 +42,11 @@ typedef struct {
   int32_t len;
 } data_buf_t;
 
-
+typedef struct{
+  char ip[20];
+  char gw[20];
+  char nm[20];
+} local_addr_t;
 
 static const char *TAG = "main";
 
@@ -332,9 +336,31 @@ void at_commend_task(void *pvParameter)
 }
 
 
-void app_main() 
+/*
+**   read the local ip address, gateway ,netmask from flash
+*/
+local_addr_t read_netdata(void)
 {
   size_t size;
+  local_addr_t net;
+  esp_err_t err = nvs_open("Local", NVS_READWRITE, &nvs_local_handle);
+  if (err != ESP_OK) 
+    ESP_LOGW(TAG, "app_main:nvs open error!\n");
+  nvs_get_str(nvs_local_handle, "IP", NULL, &size);
+  nvs_get_str(nvs_local_handle, "IP", net.ip, &size);     //read ip address
+
+  nvs_get_str(nvs_local_handle, "GW", NULL, &size);
+  nvs_get_str(nvs_local_handle, "GW", net.gw, &size);    //read  gateway
+
+  nvs_get_str(nvs_local_handle, "NM", NULL, &size);
+  nvs_get_str(nvs_local_handle, "NM", net.nm, &size);   //read  netmask
+  nvs_close(nvs_local_handle);
+  return net;
+}
+
+void app_main() 
+{
+  local_addr_t net;
   esp_err_t err = nvs_flash_init();
 
   eth_event_group = xEventGroupCreate();
@@ -349,30 +375,13 @@ void app_main()
   ESP_ERROR_CHECK(err); 
   ets_delay_us(100000);
 
-/*
-*   read the local ip address, gateway ,netmask from flash
-*/
-  err = nvs_open("Local", NVS_READWRITE, &nvs_local_handle);
-  if (err != ESP_OK) 
-    ESP_LOGW(TAG, "app_main:nvs open error!\n");
-  nvs_get_str(nvs_local_handle, "IP", NULL, &size);
-  char local_ip[size];
-  nvs_get_str(nvs_local_handle, "IP", local_ip, &size);
-
-  nvs_get_str(nvs_local_handle, "GW", NULL, &size);
-  char local_gw[size];
-  nvs_get_str(nvs_local_handle, "GW", local_gw, &size);
-
-  nvs_get_str(nvs_local_handle, "NM", NULL, &size);
-  char local_nm[size];
-  nvs_get_str(nvs_local_handle, "NM", local_nm, &size);
-  nvs_close(nvs_local_handle);
+  net = read_netdata();       //get the net data from the flash
 
   uart_init();
   eth_install(event_handler, NULL);
-  eth_config("ESP32-GateWay", inet_addr("192.168.3.66"),
-                              inet_addr("192.168.3.1"), inet_addr("255.255.255.0"), inet_addr("192.168.3.1"), 0);
+  eth_config("ESP32-GateWay", inet_addr(net.ip),
+                              inet_addr(net.gw), inet_addr(net.nm), inet_addr(net.gw), 0);
   xTaskCreate(&uart_task, "uart_task", 2 * 1024, NULL, 6, NULL);
-  xTaskCreate(&at_commend_task, "at_commend_task", 1 * 1024, NULL, 4, NULL);
+  xTaskCreate(&at_commend_task, "at_commend_task", 2 * 1024, NULL, 4, NULL);
   xTaskCreate(&tcp_client_task, "tcp_client_task", 2 * 1024, NULL, 5, NULL);
 }
