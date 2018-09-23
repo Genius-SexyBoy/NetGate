@@ -16,6 +16,7 @@
 #include "driver/uart.h"
 
 #include "eth.h"
+#include "bsp_gpio.h"
 #include "board_uart.h"
 #include "board_nvs.h"
 
@@ -24,6 +25,8 @@
 #include "lwip/sys.h"
 #include "lwip/netdb.h"
 #include "lwip/dns.h"
+
+
 
 
 nvs_handle nvs_remote_handle;
@@ -59,11 +62,13 @@ static esp_err_t event_handler(void *ctx, system_event_t *event)
         break;
       case SYSTEM_EVENT_ETH_GOT_IP:
         ESP_LOGI(TAG,"ETH_GOT_IP");
+        gpio_set_level(GPIO_NUM_12, 0);
         xEventGroupSetBits(eth_event_group, CONNECTED_BIT);
         break;
       case SYSTEM_EVENT_ETH_DISCONNECTED:
         ESP_LOGI(TAG,"ETH Disconnected");
         xEventGroupClearBits(eth_event_group, CONNECTED_BIT);
+        gpio_set_level(GPIO_NUM_12, 1);
         break;
       default:
         break;
@@ -279,23 +284,35 @@ void at_commend_task(void *pvParameter)
           if((at_commend_struct.data[5] == 'I') && (at_commend_struct.data[6] == 'P') && (at_commend_struct.data[7] == '='))
           {
             //AT+LCIP=
-            uart_write_bytes(UART_NUM_0, (ret + 1), strlen(ret));
-            my_nvs_write(nvs_local_handle, "Local", "IP", (ret + 1));
-            ESP_LOGI(TAG, "Set local IP success!\n");
+            ret = strchr((const char *)at_commend_struct.data, ch);
+            if(ret != NULL)
+            {
+              uart_write_bytes(UART_NUM_0, (ret + 1), strlen(ret));
+              my_nvs_write(nvs_local_handle, "Local", "IP", (ret + 1));
+              ESP_LOGI(TAG, "Set local IP success!\n");
+            }       
           }
           else if((at_commend_struct.data[5] == 'G') && (at_commend_struct.data[6] == 'W') && (at_commend_struct.data[7] == '='))
           {
             //AT+LCGW=
-            uart_write_bytes(UART_NUM_0, (ret + 1), strlen(ret));
-            my_nvs_write(nvs_local_handle, "Local", "GW", (ret + 1));
-            ESP_LOGI(TAG, "Set local gateway success!\n");
+            ret = strchr((const char *)at_commend_struct.data, ch);
+            if(ret != NULL)
+            {
+              uart_write_bytes(UART_NUM_0, (ret + 1), strlen(ret));
+              my_nvs_write(nvs_local_handle, "Local", "GW", (ret + 1));
+              ESP_LOGI(TAG, "Set local gateway success!\n");
+            } 
           }
           else if((at_commend_struct.data[5] == 'N') && (at_commend_struct.data[6] == 'M') && (at_commend_struct.data[7] == '='))
           {
             //AT+LCNM=
-            uart_write_bytes(UART_NUM_0, (ret + 1), strlen(ret));
-            my_nvs_write(nvs_local_handle, "Local", "NM", (ret + 1));
-            ESP_LOGI(TAG, "Set local netmask success!\n");
+            ret = strchr((const char *)at_commend_struct.data, ch);
+            if(ret != NULL)
+            {
+              uart_write_bytes(UART_NUM_0, (ret + 1), strlen(ret));
+              my_nvs_write(nvs_local_handle, "Local", "NM", (ret + 1));
+              ESP_LOGI(TAG, "Set local netmask success!\n");
+            }
           }
         }
         else if((at_commend_struct.data[3] == 'R') && (at_commend_struct.data[4] == 'M'))
@@ -343,9 +360,9 @@ local_addr_t read_netdata(void)
 {
   size_t size;
   local_addr_t net;
-  esp_err_t err = nvs_open("Local", NVS_READWRITE, &nvs_local_handle);
-  if (err != ESP_OK) 
-    ESP_LOGW(TAG, "app_main:nvs open error!\n");
+  nvs_open("Local", NVS_READWRITE, &nvs_local_handle);
+  // if (err != ESP_OK) 
+  //   ESP_LOGW(TAG, "app_main:nvs open error!\n");
   nvs_get_str(nvs_local_handle, "IP", NULL, &size);
   nvs_get_str(nvs_local_handle, "IP", net.ip, &size);     //read ip address
 
@@ -358,9 +375,11 @@ local_addr_t read_netdata(void)
   return net;
 }
 
+
+
 void app_main() 
 {
-  local_addr_t net;
+  static local_addr_t net;
   esp_err_t err = nvs_flash_init();
 
   eth_event_group = xEventGroupCreate();
@@ -377,11 +396,20 @@ void app_main()
 
   net = read_netdata();       //get the net data from the flash
 
+  bsp_gpio_init(GPIO_NUM_12);
   uart_init();
   eth_install(event_handler, NULL);
   eth_config("ESP32-GateWay", inet_addr(net.ip),
                               inet_addr(net.gw), inet_addr(net.nm), inet_addr(net.gw), 0);
   xTaskCreate(&uart_task, "uart_task", 2 * 1024, NULL, 6, NULL);
-  xTaskCreate(&at_commend_task, "at_commend_task", 2 * 1024, NULL, 4, NULL);
+  xTaskCreate(&at_commend_task, "at_commend_task", 3 * 1024, NULL, 4, NULL);
   xTaskCreate(&tcp_client_task, "tcp_client_task", 2 * 1024, NULL, 5, NULL);
+//  int cnt = 0;
+//     while (1) 
+//     {
+//       cnt++;
+//       vTaskDelay(1000 / portTICK_RATE_MS);
+// //    ESP_LOGI(TAG, "current heap size:%d", heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+//       gpio_set_level(GPIO_NUM_12, cnt % 2);
+//     }
 }
